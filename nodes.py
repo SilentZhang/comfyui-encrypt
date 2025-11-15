@@ -137,8 +137,67 @@ class RSAEncryptNode:
             raise
 
         # Determine output path
+        def _expand_placeholders(s: str) -> str:
+            """Expand %date:FORMAT% placeholders into actual date strings.
+
+            Supported tokens inside FORMAT: yyyy, yy, MM, dd, hhmmss, hh, mm, ss
+            Example: %date:yyyy-MM-dd% -> 2025-11-15
+            """
+            import re
+            from datetime import datetime
+
+            def _conv(fmt: str) -> str:
+                # map common tokens to Python strftime
+                fmt = fmt.replace('yyyy', '%Y')
+                fmt = fmt.replace('yy', '%y')
+                fmt = fmt.replace('MM', '%m')
+                fmt = fmt.replace('dd', '%d')
+                fmt = fmt.replace('hhmmss', '%H%M%S')
+                fmt = fmt.replace('hh', '%H')
+                fmt = fmt.replace('mm', '%M')
+                fmt = fmt.replace('ss', '%S')
+                return fmt
+
+            def repl(m: re.Match) -> str:
+                inner = m.group(1)
+                try:
+                    pyfmt = _conv(inner)
+                    return datetime.now().strftime(pyfmt)
+                except Exception:
+                    return m.group(0)
+
+            return re.sub(r"%date:([^%]+)%", repl, s)
+
+        target = None
         if out_path:
-            target = Path(out_path)
+            expanded = _expand_placeholders(out_path)
+            # If user provided a relative placeholder path, place it under ComfyUI 'output' dir
+            p = Path(expanded)
+            if not p.is_absolute():
+                p = Path(os.getcwd()) / 'ComfyUI/output' / p
+
+            # If p looks like a directory (ends with separator) or has no suffix, treat as base name and create unique file
+            if str(expanded).endswith(os.sep) or p.suffix == '':
+                base_dir = p
+                # if there's a basename with no suffix, separate parent and name
+                if p.name and p.suffix == '':
+                    base_dir = p.parent
+                    base_name = p.name
+                else:
+                    base_name = 'encrypted_image'
+
+                base_dir.mkdir(parents=True, exist_ok=True)
+                i = 0
+                while True:
+                    candidate = base_dir / f"{base_name}_{i}.rsa"
+                    if not candidate.exists():
+                        target = candidate
+                        break
+                    i += 1
+            else:
+                # Ensure parent exists
+                p.parent.mkdir(parents=True, exist_ok=True)
+                target = p
         else:
             base = Path(os.getcwd()) / "encrypted_image"
             i = 0
