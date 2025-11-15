@@ -74,25 +74,34 @@ img.show()
 
 ### 方式 1：使用自定义节点（推荐）
 
-将 `rsa_encrypt_node.py`、`rsa_encrypt.py` 和 `rsa_comfy_node_example.py` 复制到 ComfyUI 的 `custom_nodes` 目录。
+
+将 `rsa_encrypt.py`、`nodes.py` 和 `__init__.py` 整个文件夹（如 `comfyui-encrypt` 文件夹）复制到 ComfyUI 的 `custom_nodes` 目录下：
+
+```
+ComfyUI/custom_nodes/comfyui-encrypt/
+├── __init__.py
+├── nodes.py
+└── rsa_encrypt.py
+```
 
 重启 ComfyUI 后，你会在 "Encryption" 分类中看到两个新节点：
 - **RSAEncryptNode**：输入 IMAGE 和 RSA 公钥（PEM 字符串），输出加密文件路径
 - **RSAKeyGeneratorNode**：生成 RSA 密钥对（2048 或 4096 位），可选保存到磁盘
 
-### 方式 2：使用 Script 节点
 
-在 Script 节点中直接调用：
+### 方式 2：Script 节点自定义调用
+
+你也可以在 Script 节点中直接调用核心库：
 
 ```python
-from rsa_comfy_node_example import comfy_encrypt_image
+from comfyui_encrypt.rsa_encrypt import encrypt_image
 
 # 读取公钥（假设保存在某处）
 with open("public_key.pem", "rb") as f:
     public_key_pem = f.read()
 
-# image 是 ComfyUI 传入的 IMAGE 对象
-enc_bytes = comfy_encrypt_image(image, public_key_pem)
+# image 是 ComfyUI 传入的 IMAGE 对象（PIL Image/numpy array）
+enc_bytes = encrypt_image(image, public_key_pem)
 
 # 保存
 with open("encrypted_image.rsa", "wb") as f:
@@ -107,11 +116,12 @@ with open("encrypted_image.rsa", "wb") as f:
 pytest -q
 ```
 
+
 ## 关键文件说明
 
 - `rsa_encrypt.py` — 核心库：密钥生成、加密/解密函数
-- `rsa_comfy_node_example.py` — ComfyUI Script 节点的简单包装
-- `rsa_encrypt_node.py` — ComfyUI 自定义节点定义（两个节点类）
+- `nodes.py` — ComfyUI 自定义节点定义（两个节点类）
+- `__init__.py` — 节点注册入口，供 ComfyUI 自动发现
 - `requirements.txt` — Python 依赖清单
 - `tests/test_rsa_encrypt.py` — pytest 单元测试
 

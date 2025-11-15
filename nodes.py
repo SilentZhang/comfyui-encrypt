@@ -7,13 +7,23 @@ This node accepts an IMAGE input, encrypts it with an RSA public key, and output
 the encrypted bytes written to a file, returning the file path as a string.
 """
 
+
+import sys
+import traceback
+print("[nodes.py] Importing dependencies for ComfyUI RSA nodes...")
 from pathlib import Path
 from typing import Optional
 from PIL import Image
 import os
 import io
 
-from rsa_encrypt import generate_rsa_keypair, encrypt_image
+try:
+    from .rsa_encrypt import generate_rsa_keypair, encrypt_image
+    print("[nodes.py] Successfully imported generate_rsa_keypair, encrypt_image from .rsa_encrypt")
+except Exception as e:
+    print(f"[nodes.py] ImportError: {e}", file=sys.stderr)
+    traceback.print_exc()
+    raise
 
 
 class RSAEncryptNode:
@@ -24,6 +34,7 @@ class RSAEncryptNode:
 
     @classmethod
     def INPUT_TYPES(cls):
+        print("[RSAEncryptNode] INPUT_TYPES called")
         return {
             "required": {
                 "image": ("IMAGE",),
@@ -37,6 +48,7 @@ class RSAEncryptNode:
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("file_path",)
     FUNCTION = "encrypt"
+    OUTPUT_NODE = False
     CATEGORY = "Encryption"
 
     def encrypt(
@@ -45,6 +57,7 @@ class RSAEncryptNode:
         public_key_pem: str,
         out_path: Optional[str] = None,
     ):
+        print(f"[RSAEncryptNode] encrypt called with out_path={out_path}")
         """Encrypt an image with RSA public key.
 
         Args:
@@ -57,18 +70,25 @@ class RSAEncryptNode:
         """
         # Convert ComfyUI image input to PIL Image
         pil_img = None
-        if hasattr(image, "convert"):
-            pil_img = image
-        else:
-            try:
-                import numpy as np
-                arr = np.array(image)
-                pil_img = Image.fromarray(arr)
-            except Exception:
+        try:
+            if hasattr(image, "convert"):
+                pil_img = image
+            else:
                 try:
-                    pil_img = Image.open(io.BytesIO(image))
-                except Exception as e:
-                    raise ValueError(f"Unsupported image input: {e}")
+                    import numpy as np
+                    arr = np.array(image)
+                    pil_img = Image.fromarray(arr)
+                except Exception:
+                    try:
+                        pil_img = Image.open(io.BytesIO(image))
+                    except Exception as e:
+                        print(f"[RSAEncryptNode] Error converting image: {e}", file=sys.stderr)
+                        traceback.print_exc()
+                        raise ValueError(f"Unsupported image input: {e}")
+        except Exception as e:
+            print(f"[RSAEncryptNode] Exception in image conversion: {e}", file=sys.stderr)
+            traceback.print_exc()
+            raise
 
         # Convert public key string to bytes
         if isinstance(public_key_pem, str):
@@ -77,7 +97,12 @@ class RSAEncryptNode:
             public_key_pem_bytes = public_key_pem
 
         # Encrypt
-        enc_bytes = encrypt_image(pil_img, public_key_pem_bytes)
+        try:
+            enc_bytes = encrypt_image(pil_img, public_key_pem_bytes)
+        except Exception as e:
+            print(f"[RSAEncryptNode] Error in encrypt_image: {e}", file=sys.stderr)
+            traceback.print_exc()
+            raise
 
         # Determine output path
         if out_path:
@@ -96,8 +121,14 @@ class RSAEncryptNode:
         target.parent.mkdir(parents=True, exist_ok=True)
 
         # Write encrypted data
-        with open(target, "wb") as f:
-            f.write(enc_bytes)
+        try:
+            with open(target, "wb") as f:
+                f.write(enc_bytes)
+            print(f"[RSAEncryptNode] Encrypted image written to {target}")
+        except Exception as e:
+            print(f"[RSAEncryptNode] Error writing encrypted file: {e}", file=sys.stderr)
+            traceback.print_exc()
+            raise
 
         return (str(target),)
 
@@ -107,6 +138,7 @@ class RSAKeyGeneratorNode:
 
     @classmethod
     def INPUT_TYPES(cls):
+        print("[RSAKeyGeneratorNode] INPUT_TYPES called")
         return {
             "required": {
                 "key_size": (["2048", "4096"],),
@@ -120,6 +152,7 @@ class RSAKeyGeneratorNode:
     RETURN_TYPES = ("STRING", "STRING")
     RETURN_NAMES = ("private_key_pem", "public_key_pem")
     FUNCTION = "generate"
+    OUTPUT_NODE = False
     CATEGORY = "Encryption"
 
     def generate(
@@ -128,6 +161,7 @@ class RSAKeyGeneratorNode:
         private_key_path: Optional[str] = None,
         public_key_path: Optional[str] = None,
     ):
+        print(f"[RSAKeyGeneratorNode] generate called with key_size={key_size}, private_key_path={private_key_path}, public_key_path={public_key_path}")
         """Generate RSA keypair.
 
         Args:
@@ -138,26 +172,34 @@ class RSAKeyGeneratorNode:
         Returns:
             (private_key_pem_str, public_key_pem_str)
         """
-        size = int(key_size)
-        private_pem, public_pem = generate_rsa_keypair(key_size=size)
+        try:
+            size = int(key_size)
+            private_pem, public_pem = generate_rsa_keypair(key_size=size)
 
-        # Save if paths provided
-        if private_key_path:
-            Path(private_key_path).parent.mkdir(parents=True, exist_ok=True)
-            with open(private_key_path, "wb") as f:
-                f.write(private_pem)
+            # Save if paths provided
+            if private_key_path:
+                Path(private_key_path).parent.mkdir(parents=True, exist_ok=True)
+                with open(private_key_path, "wb") as f:
+                    f.write(private_pem)
+                print(f"[RSAKeyGeneratorNode] Private key written to {private_key_path}")
 
-        if public_key_path:
-            Path(public_key_path).parent.mkdir(parents=True, exist_ok=True)
-            with open(public_key_path, "wb") as f:
-                f.write(public_pem)
+            if public_key_path:
+                Path(public_key_path).parent.mkdir(parents=True, exist_ok=True)
+                with open(public_key_path, "wb") as f:
+                    f.write(public_pem)
+                print(f"[RSAKeyGeneratorNode] Public key written to {public_key_path}")
 
-        # Return as strings
-        return (private_pem.decode("utf-8"), public_pem.decode("utf-8"))
+            # Return as strings
+            return (private_pem.decode("utf-8"), public_pem.decode("utf-8"))
+        except Exception as e:
+            print(f"[RSAKeyGeneratorNode] Error in generate: {e}", file=sys.stderr)
+            traceback.print_exc()
+            raise
 
 
 # Expose node classes in the same pattern as ComfyUI-NodeSample so the
 # ComfyUI loader can discover and register them.
+print("[nodes.py] Registering NODE_CLASS_MAPPINGS and NODE_DISPLAY_NAME_MAPPINGS")
 NODE_CLASS_MAPPINGS = {
     "RSAEncryptNode": RSAEncryptNode,
     "RSAKeyGeneratorNode": RSAKeyGeneratorNode,
@@ -167,3 +209,4 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "RSAEncryptNode": "RSA Encrypt Image",
     "RSAKeyGeneratorNode": "RSA Key Generator",
 }
+print("[nodes.py] NODE_CLASS_MAPPINGS and NODE_DISPLAY_NAME_MAPPINGS registered")
