@@ -13,8 +13,7 @@ from PIL import Image
 import os
 import io
 
-from rsa_comfy_node_example import comfy_encrypt_image
-from rsa_encrypt import generate_rsa_keypair
+from rsa_encrypt import generate_rsa_keypair, encrypt_image
 
 
 class RSAEncryptNode:
@@ -78,7 +77,7 @@ class RSAEncryptNode:
             public_key_pem_bytes = public_key_pem
 
         # Encrypt
-        enc_bytes = comfy_encrypt_image(pil_img, public_key_pem_bytes)
+        enc_bytes = encrypt_image(pil_img, public_key_pem_bytes)
 
         # Determine output path
         if out_path:
@@ -155,3 +154,16 @@ class RSAKeyGeneratorNode:
 
         # Return as strings
         return (private_pem.decode("utf-8"), public_pem.decode("utf-8"))
+
+
+# Expose node classes in the same pattern as ComfyUI-NodeSample so the
+# ComfyUI loader can discover and register them.
+NODE_CLASS_MAPPINGS = {
+    "RSAEncryptNode": RSAEncryptNode,
+    "RSAKeyGeneratorNode": RSAKeyGeneratorNode,
+}
+
+NODE_DISPLAY_NAME_MAPPINGS = {
+    "RSAEncryptNode": "RSA Encrypt Image",
+    "RSAKeyGeneratorNode": "RSA Key Generator",
+}
