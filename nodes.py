@@ -71,24 +71,56 @@ class RSAEncryptNode:
         # Convert ComfyUI image input to PIL Image
         pil_img = None
         try:
-            if hasattr(image, "convert"):
+            import numpy as np
+            
+            # Check if it's a PyTorch Tensor
+            if hasattr(image, "numpy"):
+                print(f"[RSAEncryptNode] Detected PyTorch Tensor with shape {image.shape}, dtype {image.dtype}")
+                # Convert Tensor to numpy array
+                arr = image.numpy()
+                print(f"[RSAEncryptNode] Converted Tensor to numpy array with shape {arr.shape}, dtype {arr.dtype}")
+            elif isinstance(image, np.ndarray):
+                arr = image
+                print(f"[RSAEncryptNode] Detected numpy array with shape {arr.shape}, dtype {arr.dtype}")
+            elif hasattr(image, "convert"):
+                # It's already a PIL Image
                 pil_img = image
+                print(f"[RSAEncryptNode] Detected PIL Image")
             else:
-                try:
-                    import numpy as np
-                    arr = np.array(image)
-                    pil_img = Image.fromarray(arr)
-                except Exception:
-                    try:
-                        pil_img = Image.open(io.BytesIO(image))
-                    except Exception as e:
-                        print(f"[RSAEncryptNode] Error converting image: {e}", file=sys.stderr)
-                        traceback.print_exc()
-                        raise ValueError(f"Unsupported image input: {e}")
+                raise ValueError(f"Unsupported image type: {type(image)}")
+            
+            # If we have a numpy array, convert to PIL Image
+            if pil_img is None and arr is not None:
+                # Handle float arrays (ComfyUI typically uses float32 in range [0, 1])
+                if arr.dtype == np.float32 or arr.dtype == np.float64:
+                    print(f"[RSAEncryptNode] Converting float array to uint8 (range 0-255)")
+                    # Clamp and scale to 0-255
+                    arr = np.clip(arr * 255, 0, 255).astype(np.uint8)
+                
+                # Remove batch dimension if present (shape is (batch, height, width, channels))
+                if len(arr.shape) == 4:
+                    print(f"[RSAEncryptNode] Removing batch dimension from shape {arr.shape}")
+                    arr = arr[0]  # Take first image from batch
+                    print(f"[RSAEncryptNode] New shape after removing batch: {arr.shape}")
+                
+                # Handle different array shapes
+                if len(arr.shape) == 3:
+                    if arr.shape[2] == 4:  # RGBA
+                        pil_img = Image.fromarray(arr, mode='RGBA')
+                    elif arr.shape[2] == 3:  # RGB
+                        pil_img = Image.fromarray(arr, mode='RGB')
+                    else:
+                        raise ValueError(f"Unsupported number of channels: {arr.shape[2]}")
+                elif len(arr.shape) == 2:  # Grayscale
+                    pil_img = Image.fromarray(arr, mode='L')
+                else:
+                    raise ValueError(f"Unsupported array shape: {arr.shape}")
+                
+                print(f"[RSAEncryptNode] Converted array to PIL Image: {pil_img.size}, mode {pil_img.mode}")
         except Exception as e:
             print(f"[RSAEncryptNode] Exception in image conversion: {e}", file=sys.stderr)
             traceback.print_exc()
-            raise
+            raise ValueError(f"Unsupported image input: {e}")
 
         # Convert public key string to bytes
         if isinstance(public_key_pem, str):
